@@ -16,7 +16,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 cache = True
 
-version = "0.1.0-Beta"
+version = "0.1.0"
 
 phrases = []
 
