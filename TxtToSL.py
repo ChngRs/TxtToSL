@@ -16,7 +16,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 cache = True
 
-version = "0.1.0"
+version = "0.1.1"
 
 phrases = []
 
@@ -183,7 +183,7 @@ def getargs():
   parser = argparse.ArgumentParser()
 
   parser.add_argument("-c", "--cache", type=int,
-                      help="whether to use local cache", default=True)
+                      help="whether to use and save local cache", default=True)
 	
   parser.add_argument("-i", "--input",
                       help="the input to translate", default=None)
@@ -328,7 +328,7 @@ def main():
 
     print()     
 
-  with yaspin(text="Merging video files") as sp:
+  with yaspin(text="Merging video files") as sp1: # Use pymovie to combine video files
     clips = []
 
     for word in words:
@@ -337,7 +337,14 @@ def main():
     final = concatenate_videoclips(clips, method="compose")
     final.write_videofile("finished.mp4", fps=30)
 
-    sp.ok(ansi.GREEN + "✓" + ansi.END)
+    sp1.ok(ansi.GREEN + "✓" + ansi.END)
+
+  if not cache:
+    with yaspin(text="Deleting video files (because caching is disabled)") as sp2: # Use pymovie to combine video files
+      for word in words:
+        os.remove("cache/{}/words/{}.mp4".format(lang.lower(), word.replace(' ', '-')))
+
+      sp2.ok(ansi.GREEN + "✓" + ansi.END)
 
 if __name__ == "__main__":
   main()
