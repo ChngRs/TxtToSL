@@ -1,3 +1,9 @@
-cache/
+__pycache__/
+*.pyc
+
+TxtToSL/
+
 finished.mp4
 phrases.txt
+
+*.zip

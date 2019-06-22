@@ -10,32 +10,46 @@ from yaspin import yaspin
 
 import argparse
 
+import copy
+
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide" # Hide pygame / moviepy startup / welcome message
 
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip
 
 cache = True
 
-version = "0.1.1"
+version = "0.2.0"
 
 phrases = []
 
 class ansi:
-	BLUE = '\033[94m'
-	YELLOW = '\033[93m'
-	GREEN = '\033[92m'
-	RED = '\033[91m'
+  '''
+  Contains ANSI escape characters for ANSI colour in the terminal.
+  '''
 
-	BOLD = '\033[1m'
+  BLUE = '\033[94m'
+  YELLOW = '\033[93m'
+  GREEN = '\033[92m'
+  RED = '\033[91m'
 
-	END = '\033[0m'
+  BOLD = '\033[1m'
+
+  END = '\033[0m'
 
 def signorg_getpage(word):
+  '''
+  Gets page of word using signbsl.com or signasl.org (uses global variable lang to dictate which to use)
+  Depends on global variables: cache, lang
+
+  :param word: Word to get page for.
+  :returns: Returns HTML content / page for that word.
+  '''
+
   global cache, lang
 
   with yaspin(text="Getting main page for word '{}'".format(word)) as sp:
-    if not os.path.isfile('cache/{}/words/{}.mp4'.format(lang.lower(), word.replace(' ', '-'))) or not cache:
-      if lang == "BSL":
+    if not os.path.isfile('TxtToSL/cache/{}/words/{}.mp4'.format(lang.lower(), word.replace(' ', '-'))) or not cache:
+      if lang == "BSL": # Would use sign{}.com or sign{}.org but bsl is .com and asl is .org
         url = "https://signbsl.com/sign/{}".format(word.replace(' ', '-'))
       elif lang == "ASL":
         url = "https://signasl.org/sign/{}".format(word.replace(' ', '-'))
@@ -56,9 +70,18 @@ def signorg_getpage(word):
       return "cache"
 
 def signorg_getvid(word):
+  '''
+  Gets video of word by getting the video sources on the page of a word (from signorg_getpage).
+  Depends on global variables: cache, lang
+
+  :param word: Word to get video for.
+  :returns: Video content (mp4).
+  '''
+
   global cache, lang
 
-  page = signorg_getpage(word)
+  replaced = word.replace('[', '').replace(']', '')
+  page = signorg_getpage(replaced)
 
   if page == "cache":
     return page
@@ -66,11 +89,30 @@ def signorg_getvid(word):
   soup = BeautifulSoup(page, features="html.parser")
   vids = soup.find_all('source');
 
+  if len(vids) == 0: # No videos / word not in dict.
+    if word[0] == "[": # If surrounded by [], which makes it auto-do each letter
+      if word[len(word) - 1] == "]":
+        print("Auto spellout")
+        replaced = list(replaced)
+
+        for char in replaced:
+          content = signorg_getvid(char)
+
+          if content != "cache":
+            savevid(content, char)
+        
+        return replaced
+    
   for vid in vids:
     url = vid['src']
 
-    provider = re.search("{}\/.*\/".format(lang.lower()), url).group().replace("{}/".format(lang.lower()), '').replace('/mp4/', '').replace('/', '')
+    provider = "unavaliable"
 
+    try:
+      provider = re.search("{}\/.*\/".format(lang.lower()), url).group().replace("{}/".format(lang.lower()), '').replace('/mp4/', '').replace('/', '')
+    except:
+      print("Unable to find provider")
+    
     with yaspin(text="Getting video for '{}' with provider '{}'".format(word, provider)) as sp:
       r = requests.get(url)
 
@@ -82,10 +124,18 @@ def signorg_getvid(word):
         sp.fail(ansi.RED + "✗" + ansi.END)
 
 def dgs_getpage(word):
+  '''
+  Gets page of word using signdict.org
+  Depends on global variables: cache
+
+  :param word: Word to get page for.
+  :returns: Returns HTML content / page for that word.
+  '''
+
   global cache
 
   with yaspin(text="Getting main page for word '{}'".format(word)) as sp:
-    if not os.path.isfile('cache/dgs/words/{}.mp4'.format(word.replace(' ', '-'))) or not cache:
+    if not os.path.isfile('TxtToSL/cache/dgs/words/{}.mp4'.format(word.replace(' ', '-'))) or not cache:
       url = "https://signdict.org/search?q={}".format(word)
       r = requests.get(url)
 
@@ -103,6 +153,14 @@ def dgs_getpage(word):
       return "cache"
 
 def dgs_entrypage(page, word):
+  '''
+  Gets first entry and returns it's contents. in page (param).
+  Depends on global variables: cache
+
+  :param word: Word to get page for.
+  :returns: Returns HTML content / page for the entry for the word.
+  '''
+
   entryurl = None
 
   with yaspin(text="Getting entry page for word '{}'".format(word)) as sp:
@@ -137,14 +195,38 @@ def dgs_entrypage(page, word):
       return False
   
 def dgs_getvid(word):
+  '''
+  Gets video of word by getting the video sources on the page of a word (from dgs_getpage and dgs_entrypage).
+  Depends on global variables: cache, lang
+
+  :param word: Word to get video for.
+  :returns: Video content (mp4).
+  '''
+
   global cache
 
-  page = dgs_getpage(word)
+  replaced = word.replace('[', '').replace(']', '').replace(' ', '-')
+
+  page = dgs_getpage(replaced)
 
   if page == "cache":
     return page
   
-  entry = dgs_entrypage(page, word)
+  entry = dgs_entrypage(page, replaced)
+
+  if entry == False:
+    if word[0] == "[": # If surrounded by [], which makes it auto-do each letter
+      if word[len(word) - 1] == "]":
+        print("Auto spellout")
+        replaced = list(replaced)
+
+        for char in replaced:
+          content = dgs_getvid(char)
+
+          if content != "cache":
+            savevid(content, char)
+        
+        return replaced
 
   soup = BeautifulSoup(entry, features="html.parser")
   vids = soup.find_all('video');
@@ -163,11 +245,27 @@ def dgs_getvid(word):
         sp.fail(ansi.RED + "✗" + ansi.END)
 
 def savevid(content, word):
+  '''
+  Saves video of param content.
+  Depends on global variables: lang
+
+  :param content: Video content to save.
+  :param word: Word, used for file path.
+  :returns: True.
+  '''
+
   global lang
 
-  with yaspin(text="Saving video file 'cache/{}/words/{}.mp4'".format(lang.lower(), word.replace(' ', '-'))) as sp:
+  replaced = word.replace('[', '').replace(']', '').replace(' ', '-')
+
+  if content == None: # Unable to get / find word
+    print("Word '{}' does not exist. Press any key to skip word and continue.".format(word.replace('[', '').replace(']', '')))
+
+    return False
+  
+  with yaspin(text="Saving video file 'TxtToSL/cache/{}/words/{}.mp4'".format(lang.lower(), replaced)) as sp:
     if content != "cache":
-      with open('cache/{}/words/{}.mp4'.format(lang.lower(), word.replace(' ', '-')), 'wb') as f:
+      with open('TxtToSL/cache/{}/words/{}.mp4'.format(lang.lower(), replaced), 'wb') as f:
         f.write(content)
 
       sp.ok(ansi.GREEN + "✓" + ansi.END)
@@ -178,6 +276,13 @@ full = None
 lang = None
 
 def getargs():
+  '''
+  Gets command line / terminal arguments
+  Depends on global variables: lang, cache
+
+  :returns: Nothing.
+  '''
+
   global cache, full
 
   parser = argparse.ArgumentParser()
@@ -198,6 +303,14 @@ def getargs():
   lang = args.lang
 
 def checkdir(path):
+  '''
+  Checks whether directory path (param) exists, if not, creates the directory.
+  Depends on global variables: none.
+
+  :param path: Directory / path to check / create.
+  :returns: Nothing.
+  '''
+
   with yaspin(text="Checking '{}' exists".format(path)) as sp:
     if not os.path.exists(path):
       sp.text = "'{}' Doesn't exist, creating".format(path)
@@ -208,22 +321,35 @@ def checkdir(path):
     sp.ok(ansi.GREEN + "✓" + ansi.END)
 
 def checklang(lang):
-  checkdir('cache/{}/'.format(lang))
-  checkdir('cache/{}/words/'.format(lang))
+  '''
+  Checks whether directories for lang (param) exists, if not, creates them directory.
+  Depends on global variables: none.
 
-def checkcache():
-  checkdir('cache/') # Cache Root
+  :param lang: Sign language to check cache dirs for.
+  :returns: Nothing.
+  '''
 
-  checklang('bsl') # BSL
-  checklang('asl') # ASL
-  checklang('dgs') # DGS
+  checkdir('TxtToSL/cache/{}/'.format(lang))
+  checkdir('TxtToSL/cache/{}/words/'.format(lang))
 
-def loadphrases():
+def loadphrases(lang):
+  '''
+  Loads phrases of lang (param) to phrases (global)
+  Depends on global variables: phrases
+
+  :param lang: Sign language to get phrases for.
+  :returns: Nothing.
+  '''
+
   global phrases
 
-  if not os.path.isfile('phrases.txt'):
-    with yaspin(text="Downloading 'phrases.txt'") as sp1:
-      r = requests.get("https://oojmed.com/TxtToSL/phrases.txt")
+  if lang == "asl":
+    print("Using BSL phrases as ASL and BSL are both English therefore can use the same phrases.")
+    lang = "bsl"
+  
+  if not os.path.isfile('TxtToSL/phrases/{}.txt'.format(lang)):
+    with yaspin(text="Downloading 'TxtToSL/phrases/{}.txt'".format(lang)) as sp1:
+      r = requests.get("https://oojmed.com/TxtToSL/phrases/{}.txt".format(lang))
 
       if r.status_code == 200:
         with open('phrases.txt', 'wb') as f:
@@ -235,10 +361,10 @@ def loadphrases():
       else:
         sp1.fail(ansi.RED + "✗" + ansi.END)
   
-  with yaspin(text="Loading phrases from 'phrases.txt'") as sp2:
+  with yaspin(text="Loading phrases from 'TxtToSL/phrases/{}.txt'".format(lang)) as sp2:
     phrases = []
 
-    with open('phrases.txt', 'r') as f:
+    with open('TxtToSL/phrases/{}.txt'.format(lang), 'r') as f:
       phrases = f.readlines()
 
     phrases = [phrase.strip() for phrase in phrases]
@@ -251,19 +377,54 @@ def loadphrases():
     print(phrase)
 
 def interpret(full):
+  '''
+  Loads phrases of lang (param) to phrases (global)
+  Depends on global variables: phrases
+
+  :param lang: Sign language to get phrases for.
+  :returns: Nothing.
+  '''
+
+  global phrases
+
   full = full.lower() # Replacing grammar and making text low case
-  full = full.replace('.', '').replace(',', '').replace('?', '')
+  full = full.replace('.', '').replace(',', '').replace('?', '').replace('!', '')
 
   print(full)
 
-  for phrase in phrases: # Phrase Recognition - Phase 1 - Finding and replacing spaces in phrases
-    full = full.replace(phrase, phrase.replace(' ', '({[SPACE]})'))
+  for phrase in phrases: # Phrase Recognition - Phase 1 - Finding and replacing spaces in phrasese
+    replacedPhrase = phrase.replace(" {}", "").replace(" []", "")
+    full = full.replace(replacedPhrase, replacedPhrase.replace(' ', '({[SPACE]})'))
 
   words = full.split(" ")
 
   print(words)
 
   words[:] = [word.replace('({[SPACE]})', ' ') for word in words] # Phrase Recog. - Phrase 2 - Replacing fake space with real one in phrases
+
+  print(words)
+
+  index = 0
+  for word in words:
+    for phrase in phrases:
+      if " {}" in phrase:
+        if word == phrase.replace(" {}", ""):
+          print(word)
+          
+          try: # Try incase there is no next word
+            words[index + 1] = "{" + words[index + 1] + "}"
+          except:
+            print("Fail")
+      elif " []" in phrase:
+        if word == phrase.replace(" []", ""):
+          print(word)
+
+          try: # Try incase there is no next word
+            words[index + 1] = "[" + words[index + 1] + "]"
+          except:
+            print("Fail")
+    
+    index += 1
 
   print(words)
 
@@ -282,15 +443,22 @@ def interpret(full):
   return final
 
 def main():
+  '''
+  Main method.
+  Depends on global variables: lang, full, cache
+
+  :returns: Nothing.
+  '''
+
+  global lang, full, cache
+
   print("{}TxtToSL{} {}v{}{} - {}Made by{} {}Oojmed{}\n".format(ansi.YELLOW, ansi.END, ansi.RED, version, ansi.END, ansi.BLUE, ansi.END, ansi.GREEN, ansi.END))
 
+  checkdir('TxtToSL/')
+  checkdir('TxtToSL/phrases/')
+  checkdir('TxtToSL/cache/')
+
   getargs()
-
-  checkcache()
-
-  print()
-
-  loadphrases()
 
   print()
 
@@ -309,17 +477,29 @@ def main():
         lang = "DGS"
         break
 
+  checklang(lang.lower())
+  loadphrases(lang.lower())
+
   if full == None:
     full = input("\nInput: ")
 
   words = interpret(full)
 
-  for word in words:
+  print(words)
+
+  for word in copy.deepcopy(words):
     if lang == "BSL" or lang == "ASL":
       content = signorg_getvid(word)
 
-      if content != "cache":
+      if content != "cache" and not isinstance(content, list):
         savevid(content, word)
+      elif isinstance(content, list):
+        index = words.index(word)
+
+        words.remove(word)
+
+        words[index:index] = content
+    
     elif lang == "DGS":
       content = dgs_getvid(word)
 
@@ -328,16 +508,34 @@ def main():
 
     print()     
 
-  with yaspin(text="Merging video files") as sp1: # Use pymovie to combine video files
-    clips = []
+  print(words)
 
-    for word in words:
-      clips.append(VideoFileClip("cache/{}/words/{}.mp4".format(lang.lower(), word.replace(' ', '-'))))
+  clips = []
 
-    final = concatenate_videoclips(clips, method="compose")
-    final.write_videofile("finished.mp4", fps=30)
+  for word in words:
+    replaced = word.replace('[', '').replace(']', '')
 
-    sp1.ok(ansi.GREEN + "✓" + ansi.END)
+    if not os.path.isfile("TxtToSL/cache/{}/words/{}.mp4".format(lang.lower(), replaced.replace(' ', '-'))):
+      continue
+
+    originalClip = VideoFileClip("TxtToSL/cache/{}/words/{}.mp4".format(lang.lower(), replaced.replace(' ', '-')))
+    txt = TextClip(replaced, font='Arial',
+	    color='white',fontsize=24)
+
+    txt_col = txt.on_color(size=(originalClip.w, txt.h + 30),
+      color=(0,0,0), pos=('center' ,'center'), col_opacity=0.2)
+
+    txt_mov = txt_col.set_pos(('center', 0.7), relative=True)
+
+    composite = CompositeVideoClip([originalClip, txt_mov])
+    composite.duration = originalClip.duration
+
+    clips.append(composite)
+
+  print(clips)
+
+  final = concatenate_videoclips(clips, method="compose")
+  final.write_videofile("finished.mp4", fps=30)
 
   if not cache:
     with yaspin(text="Deleting video files (because caching is disabled)") as sp2: # Use pymovie to combine video files
