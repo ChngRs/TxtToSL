@@ -17,6 +17,7 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide" # Hide pygame / moviepy startu
 from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip
 
 cache = True
+subtitles = True
 
 version = "0.2.0"
 
@@ -35,6 +36,40 @@ class ansi:
   BOLD = '\033[1m'
 
   END = '\033[0m'
+
+def no_video_prompt(word):
+  '''
+  Displays prompt when there are no videos avaliable for a word.
+  Depends on global variables: lang
+
+  :param word: Word to process.
+  :returns: What to return in the upper method (the method that ran it).
+  '''
+
+  global lang
+
+  while True:
+      print("{}No videos found for '{}'.{} Please choose an option:\n1) Spellout\n2) Skip\n3) Abort (Exit Program)".format(ansi.RED, word, ansi.END))
+      innum = input("Number: ")
+
+      if innum == "1":
+        print("{}Spellout{}".format(ansi.BLUE, ansi.END))
+        letters = list(word)
+
+        for char in letters:
+          if lang == "BSL" or lang == "ASL":
+            content = signorg_getvid(char)
+          elif lang == "DGS":
+            content = dgs_getvid(char)
+
+          if content != "cache":
+            savevid(content, char)
+        
+        return letters
+      elif innum == "2":
+        return False
+      elif innum == "3":
+        exit()
 
 def signorg_getpage(word):
   '''
@@ -92,7 +127,7 @@ def signorg_getvid(word):
   if len(vids) == 0: # No videos / word not in dict.
     if word[0] == "[": # If surrounded by [], which makes it auto-do each letter
       if word[len(word) - 1] == "]":
-        print("Auto spellout")
+        print("{}Auto spellout{}".format(ansi.BLUE, ansi.END))
         replaced = list(replaced)
 
         for char in replaced:
@@ -103,6 +138,9 @@ def signorg_getvid(word):
         
         return replaced
     
+    return no_video_prompt(replaced)
+
+    
   for vid in vids:
     url = vid['src']
 
@@ -111,7 +149,7 @@ def signorg_getvid(word):
     try:
       provider = re.search("{}\/.*\/".format(lang.lower()), url).group().replace("{}/".format(lang.lower()), '').replace('/mp4/', '').replace('/', '')
     except:
-      print("Unable to find provider")
+      print("{}Unable to find provider{}".format(ansi.YELLOW, ansi.END))
     
     with yaspin(text="Getting video for '{}' with provider '{}'".format(word, provider)) as sp:
       r = requests.get(url)
@@ -214,7 +252,7 @@ def dgs_getvid(word):
   
   entry = dgs_entrypage(page, replaced)
 
-  if entry == False:
+  if entry == False: # No entries, therefore no videos
     if word[0] == "[": # If surrounded by [], which makes it auto-do each letter
       if word[len(word) - 1] == "]":
         print("Auto spellout")
@@ -227,6 +265,8 @@ def dgs_getvid(word):
             savevid(content, char)
         
         return replaced
+    
+    return no_video_prompt(replaced)
 
   soup = BeautifulSoup(entry, features="html.parser")
   vids = soup.find_all('video');
@@ -259,7 +299,8 @@ def savevid(content, word):
   replaced = word.replace('[', '').replace(']', '').replace(' ', '-')
 
   if content == None: # Unable to get / find word
-    print("Word '{}' does not exist. Press any key to skip word and continue.".format(word.replace('[', '').replace(']', '')))
+    print("{}ERROR: Tried to save word '{}' but content is None. Press any key to skip word.{}".format(ansi.RED, word.replace('[', '').replace(']', ''), ansi.END))
+    input()
 
     return False
   
@@ -275,6 +316,16 @@ def savevid(content, word):
 full = None
 lang = None
 
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def getargs():
   '''
   Gets command line / terminal arguments
@@ -283,24 +334,28 @@ def getargs():
   :returns: Nothing.
   '''
 
-  global cache, full
+  global cache, full, lang, subtitles
 
   parser = argparse.ArgumentParser()
 
-  parser.add_argument("-c", "--cache", type=int,
-                      help="whether to use and save local cache", default=True)
+  parser.add_argument("-c", "--cache", type=str2bool,
+                      help="whether to use and save local cache (bool)", default=True)
 	
-  parser.add_argument("-i", "--input",
-                      help="the input to translate", default=None)
+  parser.add_argument("-i", "--input", type=str,
+                      help="the input to translate (str)", default=None)
 
-  parser.add_argument("-l", "--lang",
-                      help="the sign language to use", default=None, choices=["BSL", "ASL", "DGS"])
+  parser.add_argument("-l", "--lang", type=str,
+                      help="the sign language to use (str)", default=None, choices=["BSL", "ASL", "DGS"])
 
+  parser.add_argument("-s", "--subtitles", type=str2bool,
+                      help="whether to put subtitles in result / finished.mp4 (bool)", default=True)
+  
   args = parser.parse_args()
 	
   cache = args.cache
   full = args.input
   lang = args.lang
+  subtitles = args.subtitles
 
 def checkdir(path):
   '''
@@ -343,16 +398,16 @@ def loadphrases(lang):
 
   global phrases
 
-  if lang == "asl":
-    print("Using BSL phrases as ASL and BSL are both English therefore can use the same phrases.")
-    lang = "bsl"
+  reallang = "english"
+  if lang == "dgs":
+    reallang = "german"
   
-  if not os.path.isfile('TxtToSL/phrases/{}.txt'.format(lang)):
-    with yaspin(text="Downloading 'TxtToSL/phrases/{}.txt'".format(lang)) as sp1:
-      r = requests.get("https://oojmed.com/TxtToSL/phrases/{}.txt".format(lang))
+  if not os.path.isfile('TxtToSL/phrases/{}.txt'.format(reallang)):
+    with yaspin(text="Downloading 'TxtToSL/phrases/{}.txt'".format(reallang)) as sp1:
+      r = requests.get("https://oojmed.com/TxtToSL/phrases/{}.txt".format(reallang))
 
       if r.status_code == 200:
-        with open('phrases.txt', 'wb') as f:
+        with open('TxtToSL/phrases/{}.txt'.format(reallang), 'wb') as f:
           f.write(r.content)
 
         sp1.ok(ansi.GREEN + "✓" + ansi.END)
@@ -361,10 +416,10 @@ def loadphrases(lang):
       else:
         sp1.fail(ansi.RED + "✗" + ansi.END)
   
-  with yaspin(text="Loading phrases from 'TxtToSL/phrases/{}.txt'".format(lang)) as sp2:
+  with yaspin(text="Loading phrases from 'TxtToSL/phrases/{}.txt'".format(reallang)) as sp2:
     phrases = []
 
-    with open('TxtToSL/phrases/{}.txt'.format(lang), 'r') as f:
+    with open('TxtToSL/phrases/{}.txt'.format(reallang), 'r') as f:
       phrases = f.readlines()
 
     phrases = [phrase.strip() for phrase in phrases]
@@ -397,6 +452,8 @@ def interpret(full):
     full = full.replace(replacedPhrase, replacedPhrase.replace(' ', '({[SPACE]})'))
 
   words = full.split(" ")
+
+  words = list(filter(None, words)) # Remove empty strings
 
   print(words)
 
@@ -445,20 +502,20 @@ def interpret(full):
 def main():
   '''
   Main method.
-  Depends on global variables: lang, full, cache
+  Depends on global variables: lang, full, cache, subtitles
 
   :returns: Nothing.
   '''
 
-  global lang, full, cache
+  global lang, full, cache, subtitles
 
   print("{}TxtToSL{} {}v{}{} - {}Made by{} {}Oojmed{}\n".format(ansi.YELLOW, ansi.END, ansi.RED, version, ansi.END, ansi.BLUE, ansi.END, ansi.GREEN, ansi.END))
+
+  getargs()
 
   checkdir('TxtToSL/')
   checkdir('TxtToSL/phrases/')
   checkdir('TxtToSL/cache/')
-
-  getargs()
 
   print()
 
@@ -477,7 +534,12 @@ def main():
         lang = "DGS"
         break
 
+  print()
+
   checklang(lang.lower())
+
+  print()
+
   loadphrases(lang.lower())
 
   if full == None:
@@ -491,7 +553,7 @@ def main():
     if lang == "BSL" or lang == "ASL":
       content = signorg_getvid(word)
 
-      if content != "cache" and not isinstance(content, list):
+      if content != "cache" and content is not False and not isinstance(content, list):
         savevid(content, word)
       elif isinstance(content, list):
         index = words.index(word)
@@ -499,7 +561,9 @@ def main():
         words.remove(word)
 
         words[index:index] = content
-    
+      elif content is False: # Skip word
+        words.remove(word)
+
     elif lang == "DGS":
       content = dgs_getvid(word)
 
@@ -519,18 +583,22 @@ def main():
       continue
 
     originalClip = VideoFileClip("TxtToSL/cache/{}/words/{}.mp4".format(lang.lower(), replaced.replace(' ', '-')))
-    txt = TextClip(replaced, font='Arial',
-	    color='white',fontsize=24)
 
-    txt_col = txt.on_color(size=(originalClip.w, txt.h + 30),
-      color=(0,0,0), pos=('center' ,'center'), col_opacity=0.2)
+    if subtitles:
+      txt = TextClip(replaced, font='Arial',
+	      color='white',fontsize=24)
 
-    txt_mov = txt_col.set_pos(('center', 0.7), relative=True)
+      txt_col = txt.on_color(size=(originalClip.w, txt.h + 30),
+        color=(0,0,0), pos=('center' ,'center'), col_opacity=0.2)
 
-    composite = CompositeVideoClip([originalClip, txt_mov])
-    composite.duration = originalClip.duration
+      txt_mov = txt_col.set_pos(('center', 0.7), relative=True)
 
-    clips.append(composite)
+      composite = CompositeVideoClip([originalClip, txt_mov])
+      composite.duration = originalClip.duration
+
+      clips.append(composite)
+    else:
+      clips.append(originalClip)
 
   print(clips)
 
