@@ -19,9 +19,10 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, Comp
 cache = True
 subtitles = True
 
-version = "0.2.0"
+version = "0.3.0"
 
 phrases = []
+autoskip = []
 
 class ansi:
   '''
@@ -431,16 +432,60 @@ def loadphrases(lang):
   for phrase in phrases:
     print(phrase)
 
+def loadautoskip(lang):
+  '''
+  Loads autoskip of lang (param) to autoskip (global)
+  Depends on global variables: autoskip
+
+  :param lang: Sign language to get autoskip for.
+  :returns: Nothing.
+  '''
+
+  global autoskip
+
+  reallang = "english"
+  if lang == "dgs":
+    reallang = "german"
+  
+  if not os.path.isfile('TxtToSL/autoskip/{}.txt'.format(reallang)):
+    with yaspin(text="Downloading 'TxtToSL/autoskip/{}.txt'".format(reallang)) as sp1:
+      r = requests.get("https://oojmed.com/TxtToSL/autoskip/{}.txt".format(reallang))
+
+      if r.status_code == 200:
+        with open('TxtToSL/autoskip/{}.txt'.format(reallang), 'wb') as f:
+          f.write(r.content)
+
+        sp1.ok(ansi.GREEN + "✓" + ansi.END)
+
+        return r.content
+      else:
+        sp1.fail(ansi.RED + "✗" + ansi.END)
+  
+  with yaspin(text="Loading phrases from 'TxtToSL/autoskip/{}.txt'".format(reallang)) as sp2:
+    autoskip = []
+
+    with open('TxtToSL/autoskip/{}.txt'.format(reallang), 'r') as f:
+      autoskip = f.readlines()
+
+    autoskip = [word.strip() for word in autoskip]
+
+    sp2.ok(ansi.GREEN + "✓" + ansi.END)
+  
+  print()
+
+  for word in autoskip:
+    print(word)
+
 def interpret(full):
   '''
   Loads phrases of lang (param) to phrases (global)
-  Depends on global variables: phrases
+  Depends on global variables: phrases, autoskip
 
   :param lang: Sign language to get phrases for.
   :returns: Nothing.
   '''
 
-  global phrases
+  global phrases, autoskip
 
   full = full.lower() # Replacing grammar and making text low case
   full = full.replace('.', '').replace(',', '').replace('?', '').replace('!', '')
@@ -458,6 +503,12 @@ def interpret(full):
   print(words)
 
   words[:] = [word.replace('({[SPACE]})', ' ') for word in words] # Phrase Recog. - Phrase 2 - Replacing fake space with real one in phrases
+
+  print(words)
+
+  for word in words:
+    if word in autoskip:
+      words.remove(word)
 
   print(words)
 
@@ -540,7 +591,13 @@ def main():
 
   print()
 
+  loadautoskip(lang.lower())
+
+  print()
+
   loadphrases(lang.lower())
+
+  print()
 
   if full == None:
     full = input("\nInput: ")

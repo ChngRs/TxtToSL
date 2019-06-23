@@ -1,5 +1,9 @@
 # TxtToSL Changelog
 
+## v0.3.0
+### Interpretation
+- Added autoskip, it will automatically skip words during interpretation, mostly just simple words that don't exist in sign (`is`, `the`, etc.)
+
 ## v0.2.0
 ### Merging videos
 - Removed Yaspin spinner from merging videos, as it clashes with moviepy's bar / loading (which looks better anyway)
