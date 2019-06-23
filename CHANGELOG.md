@@ -1,5 +1,9 @@
 # TxtToSL Changelog
 
+## v0.3.1
+### Fixes
+- Fixed not creating `TxtToSL/autoskip/` directory
+
 ## v0.3.0
 ### Interpretation
 - Added autoskip, it will automatically skip words during interpretation, mostly just simple words that don't exist in sign (`is`, `the`, etc.)

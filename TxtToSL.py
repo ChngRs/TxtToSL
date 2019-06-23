@@ -565,7 +565,10 @@ def main():
   getargs()
 
   checkdir('TxtToSL/')
+  
   checkdir('TxtToSL/phrases/')
+  checkdir('TxtToSL/autoskip/')
+
   checkdir('TxtToSL/cache/')
 
   print()
