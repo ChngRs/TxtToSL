@@ -4,7 +4,7 @@
 ## Supported Sign Languages
 - BSL (British Sign Language)
 - ASL (American Sign Language)
-- DGL (German Sign Language)
+- DGL (German Sign Language / Deutsche Gebärdensprache)
 
 ## Requirements
 Requirements can be found in `requirements.txt`, to install do: `pip install -i requirements.txt`
