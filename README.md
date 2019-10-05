@@ -3,6 +3,10 @@
 
 ---
 
+## TxtToSL is being retired and replaced with TxtToSL Online.
+
+---
+
 ## Supported Sign Languages
 - BSL (British Sign Language)
 - ASL (American Sign Language)
